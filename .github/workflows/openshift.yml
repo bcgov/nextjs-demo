@@ -10,33 +10,56 @@ env:
   OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
   IMAGE_NAME: nextjs-app
   REGISTRY: image-registry.apps.silver.devops.gov.bc.ca/d78a41-dev
-  NAMESPACE: "d78a41-dev"
+  NAMESPACE: d78a41-dev
+  HELM_RELEASE_NAME: nextjs-app
 
 jobs:
   build-and-deploy-nextjs:
-    name: Build the clients image
+    name: Build, Push, and Helm Deploy
     runs-on: ubuntu-latest
     environment: dev
 
     steps:
-    - name: checkout code
+    - name: Checkout code
       uses: actions/checkout@v4
+
     - name: Build the application image
       id: image_build
       uses: redhat-actions/buildah-build@v2
       with:
-        image: nextjs-app
+        image: ${{ env.IMAGE_NAME }}
         tags: latest
         labels: |
-          app=nextjs-app
+          app=${{ env.IMAGE_NAME }}
         context: .
         containerfiles: |
           ./Dockerfile
+
     - name: Push the image to OpenShift Registry
       uses: redhat-actions/push-to-registry@v2
       with:
         image: ${{ steps.image_build.outputs.image }}
         tags: ${{ steps.image_build.outputs.tags }}
         registry: ${{ env.REGISTRY }}
-        username: pwa-cicd
+        username: github-actions-sa
         password: ${{ env.OPENSHIFT_TOKEN }}
+    - name: Install oc CLI
+      uses: redhat-actions/oc-installer@v1
+      with:
+        oc_version: 'latest'
+
+
+    - name: Authenticate to OpenShift
+      uses: redhat-actions/oc-login@v1
+      with:
+        openshift_server_url: ${{ env.OPENSHIFT_SERVER }}
+        openshift_token: ${{ env.OPENSHIFT_TOKEN }}
+        namespace: ${{ env.NAMESPACE }}
+
+    - name: Deploy with Helm
+      run: |
+        helm upgrade --install nextjs-app ./bass-infra \
+          --namespace d78a41-dev \
+          --set image.repository=image-registry.apps.silver.devops.gov.bc.ca/d78a41-dev/nextjs-app \
+          --set image.tag=latest \
+          --wait
