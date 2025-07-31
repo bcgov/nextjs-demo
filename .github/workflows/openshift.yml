@@ -1,0 +1,42 @@
+name: Build and Deploy to OpenShift
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  OPENSHIFT_SERVER: ${{ secrets.OPENSHIFT_SERVER }}
+  OPENSHIFT_TOKEN: ${{ secrets.OPENSHIFT_TOKEN }}
+  IMAGE_NAME: nextjs-app
+  REGISTRY: image-registry.apps.silver.devops.gov.bc.ca/d78a41-dev
+  NAMESPACE: "d78a41-dev"
+
+jobs:
+  build-and-deploy-nextjs:
+    name: Build the clients image
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+    - name: checkout code
+      uses: actions/checkout@v4
+    - name: Build the application image
+      id: image_build
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: nextjs-app
+        tags: latest
+        labels: |
+          app=nextjs-app
+        context: .
+        containerfiles: |
+          ./Dockerfile
+    - name: Push the image to OpenShift Registry
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: ${{ steps.image_build.outputs.image }}
+        tags: ${{ steps.image_build.outputs.tags }}
+        registry: ${{ env.REGISTRY }}
+        username: pwa-cicd
+        password: ${{ env.OPENSHIFT_TOKEN }}
